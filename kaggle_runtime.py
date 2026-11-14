@@ -302,10 +302,6 @@ async def _post_init(application: Application) -> None:
         _queue_worker(application),
         name="hunyuan3d-generation-queue",
     )
-    application.bot_data["worker_task"] = application.create_task(
-        _queue_worker(application),
-        name="hunyuan3d-generation-queue",
-    )
 
 
 async def _post_shutdown(application: Application) -> None:
