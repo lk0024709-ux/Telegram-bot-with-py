@@ -35,7 +35,7 @@ Telegram document reply
 2. Clone/install the official [Tencent Hunyuan3D-2](https://github.com/Tencent-Hunyuan/Hunyuan3D-2) repository using its current official installation instructions. The shape-only path does not need the Paint custom rasterizer.
 3. Clone this repository in the notebook:
    ```bash
-   !git clone https://github.com/lk0024709-ux/Telegram-bot-with-py.git
+   !git clone -b feature/hunyuan3d-kaggle-telegram https://github.com/lk0024709-ux/Telegram-bot-with-py.git
    %cd Telegram-bot-with-py
    !pip install -r requirements.txt
    ```
