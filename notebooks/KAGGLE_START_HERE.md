@@ -36,7 +36,9 @@ Run after the official Hunyuan3D-2 package is installed and the model dependenci
 
 ```python
 from kaggle_runtime import run_telegram_bot
-run_telegram_bot()
+# If your existing Hunyuan3D-DiT pipeline variable is named `pipeline`:
+run_telegram_bot(shape_pipeline=pipeline)
+# Otherwise call run_telegram_bot() and the runtime loads the shape model.
 ```
 
 This loads the HunyuanDiT text-to-image pipeline on GPU 1 (when available) and the Hunyuan3D shape pipeline on GPU 0. Text prompts first produce a conditioning image; uploaded photos skip that stage. Both paths then run shape-only Hunyuan3D-DiT and send a GLB to Telegram.
