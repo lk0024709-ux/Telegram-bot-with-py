@@ -1,0 +1,12 @@
+.env
+.env.*
+__pycache__/
+*.py[cod]
+.kaggle/
+outputs/
+tmp/
+*.glb
+*.obj
+*.png
+*.jpg
+*.jpeg
