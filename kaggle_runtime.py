@@ -63,7 +63,7 @@ def _get_bot_token() -> str:
     return token
 
 
-def _load_models() -> tuple[Any, Any, Any]:
+def _load_models(shape_pipeline: Any = None, text_to_image: Any = None, background_remover: Any = None) -> tuple[Any, Any, Any]:
     """Load HunyuanDiT text-to-image and Hunyuan3D shape pipelines.
 
     With Kaggle T4 x2, text-to-image defaults to cuda:1 and shape generation
@@ -83,22 +83,26 @@ def _load_models() -> tuple[Any, Any, Any]:
     default_t2i_device = "cuda:1" if gpu_count > 1 else shape_device
     t2i_device = os.getenv("T2I_DEVICE", default_t2i_device)
 
-    LOG.info("Loading text-to-image model on %s", t2i_device)
-    text_to_image = HunyuanDiTPipeline(T2I_MODEL, device=t2i_device)
+    if text_to_image is None:
+        LOG.info("Loading text-to-image model on %s", t2i_device)
+        text_to_image = HunyuanDiTPipeline(T2I_MODEL, device=t2i_device)
 
-    LOG.info(
-        "Loading Hunyuan3D shape model %s/%s on %s",
-        SHAPE_MODEL,
-        SHAPE_SUBFOLDER,
-        shape_device,
-    )
-    shape_pipeline = Hunyuan3DDiTFlowMatchingPipeline.from_pretrained(
-        SHAPE_MODEL,
-        subfolder=SHAPE_SUBFOLDER,
-        use_safetensors=True,
-        device=shape_device,
-    )
-    background_remover = BackgroundRemover()
+    if shape_pipeline is None:
+        LOG.info(
+            "Loading Hunyuan3D shape model %s/%s on %s",
+            SHAPE_MODEL,
+            SHAPE_SUBFOLDER,
+            shape_device,
+        )
+        shape_pipeline = Hunyuan3DDiTFlowMatchingPipeline.from_pretrained(
+            SHAPE_MODEL,
+            subfolder=SHAPE_SUBFOLDER,
+            use_safetensors=True,
+            device=shape_device,
+        )
+
+    if background_remover is None:
+        background_remover = BackgroundRemover()
     LOG.info("Both generation pipelines are ready.")
     return text_to_image, shape_pipeline, (background_remover, export_to_trimesh)
 
@@ -280,7 +284,13 @@ async def _queue_worker(application: Application) -> None:
             )
         finally:
             if output_path:
-                Path(output_path).parent.rmdir() if Path(output_path).exists() else None
+                output_file = Path(output_path)
+                output_dir = output_file.parent
+                output_file.unlink(missing_ok=True)
+                try:
+                    output_dir.rmdir()
+                except OSError:
+                    LOG.warning("Could not remove temporary output directory: %s", output_dir)
             if job["image_path"]:
                 Path(job["image_path"]).unlink(missing_ok=True)
             queue.task_done()
@@ -288,10 +298,10 @@ async def _queue_worker(application: Application) -> None:
 
 async def _post_init(application: Application) -> None:
     application.bot_data["job_queue"] = asyncio.Queue(maxsize=MAX_QUEUE_SIZE)
-    text_to_image, shape_pipeline, helpers = _load_models()
-    application.bot_data["text_to_image"] = text_to_image
-    application.bot_data["shape_pipeline"] = shape_pipeline
-    application.bot_data["helpers"] = helpers
+    application.bot_data["worker_task"] = application.create_task(
+        _queue_worker(application),
+        name="hunyuan3d-generation-queue",
+    )
     application.bot_data["worker_task"] = application.create_task(
         _queue_worker(application),
         name="hunyuan3d-generation-queue",
@@ -308,9 +318,14 @@ async def _post_shutdown(application: Application) -> None:
             pass
 
 
-def run_telegram_bot() -> None:
-    """Start Telegram long polling. Keep this Kaggle cell running."""
+def run_telegram_bot(*, shape_pipeline: Any = None, text_to_image: Any = None, background_remover: Any = None) -> None:
+    """Start polling; pass already-loaded notebook models to avoid loading them twice."""
     token = _get_bot_token()
+    text_to_image, shape_pipeline, helpers = _load_models(
+        shape_pipeline=shape_pipeline,
+        text_to_image=text_to_image,
+        background_remover=background_remover,
+    )
     application = (
         Application.builder()
         .token(token)
@@ -318,6 +333,9 @@ def run_telegram_bot() -> None:
         .post_shutdown(_post_shutdown)
         .build()
     )
+    application.bot_data["text_to_image"] = text_to_image
+    application.bot_data["shape_pipeline"] = shape_pipeline
+    application.bot_data["helpers"] = helpers
     application.add_handler(CommandHandler("start", _start))
     application.add_handler(CommandHandler("help", _help))
     application.add_handler(MessageHandler(filters.PHOTO, _photo))
